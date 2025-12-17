@@ -686,11 +686,32 @@
                     }
                 });
                 video.srcObject = webcamStream;
-                await video.play().catch(() => { });
+                video.muted = true;
+                video.playsInline = true;
+                
+                return new Promise((resolve) => {
+                    const tryPlay = async () => {
+                        try {
+                            await video.play();
+                            const checkReady = () => {
+                                if (video.readyState >= 2) {
+                                    resolve();
+                                } else {
+                                    setTimeout(checkReady, 50);
+                                }
+                            };
+                            checkReady();
+                        } catch (e) {
+                            setTimeout(tryPlay, 100);
+                        }
+                    };
+                    video.addEventListener('playing', () => resolve(), { once: true });
+                    tryPlay();
+                });
             }
 
             await startCamera(webcamFacingMode);
-            video.addEventListener("loadeddata", predictWebcam, { once: true });
+            predictWebcam();
         }
 
         let lastVideoTime = -1;
