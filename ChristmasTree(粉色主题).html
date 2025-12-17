@@ -151,15 +151,17 @@
         /* Webcam feedback */
         #webcam-wrapper {
             position: absolute;
-            bottom: 40px;
-            right: 40px;
-            width: 120px;
-            height: 90px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            bottom: 18px;
+            left: 18px;
+            width: 160px;
+            height: 120px;
+            border: 1px solid rgba(255, 158, 181, 0.35);
             overflow: hidden;
-            opacity: 0;
-            /* Hidden by default but functional */
+            opacity: 0.95;
             pointer-events: none;
+            border-radius: 10px;
+            background: rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(6px);
         }
 
         .cam-btn {
@@ -815,9 +817,41 @@
                     const result = handLandmarker.detectForVideo(video, performance.now());
                     processGestures(result);
                 }
+                if (webcamCtx) {
+                    webcamCtx.drawImage(video, 0, 0, webcamCanvas.width, webcamCanvas.height);
+                }
             }
             requestAnimationFrame(predictWebcam);
         }
+
+        function d3(a, b) {
+            const dx = a.x - b.x, dy = a.y - b.y, dz = (a.z || 0) - (b.z || 0);
+            return Math.hypot(dx, dy, dz);
+        }
+
+        function fingerExtended(lm, tip, pip, mcp) {
+            const m = lm[mcp], p = lm[pip], t = lm[tip];
+            return d3(m, t) > d3(m, p) * 1.18;
+        }
+
+        function detectGesture(lm) {
+            const thumb = fingerExtended(lm, 4, 3, 2);
+            const index = fingerExtended(lm, 8, 6, 5);
+            const middle = fingerExtended(lm, 12, 10, 9);
+            const ring = fingerExtended(lm, 16, 14, 13);
+            const pinky = fingerExtended(lm, 20, 18, 17);
+
+            const pinch = d3(lm[4], lm[8]) < 0.045;
+            const openCount = [thumb, index, middle, ring, pinky].filter(Boolean).length;
+
+            if (openCount <= 1 && !pinch) return 'FIST';
+            if (pinch && index && !middle && !ring && !pinky) return 'PINCH';
+            if (index && middle && !ring && !pinky) return 'ROTATE';
+            if (openCount >= 4) return 'OPEN';
+            return 'NONE';
+        }
+
+        const GESTURE = { last: 'NONE', stable: 'NONE', sameCount: 0 };
 
         function processGestures(result) {
             if (result.landmarks && result.landmarks.length > 0) {
@@ -826,23 +860,34 @@
                 STATE.hand.x = (lm[9].x - 0.5) * 2;
                 STATE.hand.y = (lm[9].y - 0.5) * 2;
 
-                const thumb = lm[4]; const index = lm[8]; const wrist = lm[0];
-                const pinchDist = Math.hypot(thumb.x - index.x, thumb.y - index.y);
-                const tips = [lm[8], lm[12], lm[16], lm[20]];
-                let avgDist = 0;
-                tips.forEach(t => avgDist += Math.hypot(t.x - wrist.x, t.y - wrist.y));
-                avgDist /= 4;
+                const g = detectGesture(lm);
+                if (g === GESTURE.last) GESTURE.sameCount++;
+                else { GESTURE.last = g; GESTURE.sameCount = 0; }
+                if (GESTURE.sameCount >= 6) GESTURE.stable = g;
 
-                if (pinchDist < 0.05) {
-                    if (STATE.mode !== 'FOCUS') {
-                        STATE.mode = 'FOCUS';
-                        const photos = particleSystem.filter(p => p.type === 'PHOTO');
-                        if (photos.length) STATE.focusTarget = photos[Math.floor(Math.random() * photos.length)].mesh;
-                    }
-                } else if (avgDist < 0.25) {
+                if (GESTURE.stable === 'FIST') {
                     STATE.mode = 'TREE';
                     STATE.focusTarget = null;
-                } else if (avgDist > 0.4) {
+                } else if (GESTURE.stable === 'OPEN') {
+                    STATE.mode = 'SCATTER';
+                    STATE.focusTarget = null;
+                } else if (GESTURE.stable === 'PINCH') {
+                    if (STATE.mode !== 'FOCUS') {
+                        STATE.mode = 'FOCUS';
+                        const ndc = new THREE.Vector2(STATE.hand.x, -STATE.hand.y);
+                        const ray = new THREE.Raycaster();
+                        ray.setFromCamera(ndc, camera);
+                        const hits = ray.intersectObjects(photoMeshGroup.children, true);
+                        if (hits.length) {
+                            let obj = hits[0].object;
+                            while (obj && obj.parent && obj.parent !== photoMeshGroup) obj = obj.parent;
+                            STATE.focusTarget = obj || null;
+                        } else {
+                            const photos = particleSystem.filter(p => p.type === 'PHOTO');
+                            if (photos.length) STATE.focusTarget = photos[Math.floor(Math.random() * photos.length)].mesh;
+                        }
+                    }
+                } else if (STATE.mode === 'FOCUS' && GESTURE.stable !== 'PINCH') {
                     STATE.mode = 'SCATTER';
                     STATE.focusTarget = null;
                 }
@@ -991,8 +1036,8 @@
             requestAnimationFrame(animate);
             const dt = clock.getDelta();
 
-            // Rotation Logic
-            if (STATE.mode === 'SCATTER' && STATE.hand.detected) {
+            // Rotation Logic（仅在 ROTATE 手势下旋转，避免误触）
+            if (STATE.mode === 'SCATTER' && STATE.hand.detected && GESTURE.stable === 'ROTATE') {
                 const targetRotY = -STATE.hand.x * Math.PI * 0.9;
                 const targetRotX = STATE.hand.y * Math.PI * 0.25;
                 STATE.rotation.y += (targetRotY - STATE.rotation.y) * 3.0 * dt;
