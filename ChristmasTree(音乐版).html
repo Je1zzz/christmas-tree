@@ -859,12 +859,11 @@
             const ring = fingerExtended(lm, 16, 14, 13);
             const pinky = fingerExtended(lm, 20, 18, 17);
 
-            const pinch = d3(lm[4], lm[8]) < 0.045;
+            const pinch = d3(lm[4], lm[8]) < 0.05;
             const openCount = [thumb, index, middle, ring, pinky].filter(Boolean).length;
 
             if (openCount <= 1 && !pinch) return 'FIST';
-            if (pinch && index && !middle && !ring && !pinky) return 'PINCH';
-            if (index && middle && !ring && !pinky) return 'ROTATE';
+            if (pinch) return 'PINCH';
             if (openCount >= 4) return 'OPEN';
             return 'NONE';
         }
@@ -892,22 +891,9 @@
                 } else if (GESTURE.stable === 'PINCH') {
                     if (STATE.mode !== 'FOCUS') {
                         STATE.mode = 'FOCUS';
-                        const ndc = new THREE.Vector2(STATE.hand.x, -STATE.hand.y);
-                        const ray = new THREE.Raycaster();
-                        ray.setFromCamera(ndc, camera);
-                        const hits = ray.intersectObjects(photoMeshGroup.children, true);
-                        if (hits.length) {
-                            let obj = hits[0].object;
-                            while (obj && obj.parent && obj.parent !== photoMeshGroup) obj = obj.parent;
-                            STATE.focusTarget = obj || null;
-                        } else {
-                            const photos = particleSystem.filter(p => p.type === 'PHOTO');
-                            if (photos.length) STATE.focusTarget = photos[Math.floor(Math.random() * photos.length)].mesh;
-                        }
+                        const photos = particleSystem.filter(p => p.type === 'PHOTO');
+                        if (photos.length) STATE.focusTarget = photos[Math.floor(Math.random() * photos.length)].mesh;
                     }
-                } else if (STATE.mode === 'FOCUS' && GESTURE.stable !== 'PINCH') {
-                    STATE.mode = 'SCATTER';
-                    STATE.focusTarget = null;
                 }
             } else {
                 STATE.hand.detected = false;
