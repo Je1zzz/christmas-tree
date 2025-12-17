@@ -162,6 +162,29 @@
             pointer-events: none;
         }
 
+        .cam-btn {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            z-index: 21;
+            width: 40px;
+            height: 40px;
+            border-radius: 999px;
+            background: rgba(20, 20, 20, 0.6);
+            border: 1px solid rgba(212, 175, 55, 0.4);
+            color: #d4af37;
+            backdrop-filter: blur(5px);
+            cursor: pointer;
+            pointer-events: auto;
+            transition: all 0.25s ease;
+        }
+
+        .cam-btn:hover {
+            background: rgba(212, 175, 55, 0.18);
+            color: #fff;
+            transform: scale(1.05);
+        }
+
         /* Music Player Styles */
         .music-player {
             position: absolute;
@@ -311,6 +334,7 @@
             <button class="music-toggle-mini" id="hide-music-btn" title="隐藏播放器">×</button>
         </div>
         <button id="show-music-btn" class="music-btn" title="显示播放器">🎵</button>
+        <button id="switch-camera-btn" class="cam-btn" title="切换前/后摄像头">📷</button>
     </div>
 
     <!-- Webcam hidden structure -->
@@ -390,6 +414,8 @@
         let particleSystem = [];
         let photoMeshGroup = new THREE.Group();
         let handLandmarker, video, webcamCanvas, webcamCtx;
+        let webcamStream = null;
+        let webcamFacingMode = 'user';
         let caneTexture;
 
         async function init() {
@@ -740,20 +766,42 @@
             const vision = await FilesetResolver.forVisionTasks(
                 "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
             );
-            handLandmarker = await HandLandmarker.createFromOptions(vision, {
+            const optionsBase = {
                 baseOptions: {
                     modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-                    delegate: "GPU"
                 },
                 runningMode: "VIDEO",
                 numHands: 1
-            });
-
-            if (navigator.mediaDevices?.getUserMedia) {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                video.srcObject = stream;
-                video.addEventListener("loadeddata", predictWebcam);
+            };
+            try {
+                handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                    ...optionsBase,
+                    baseOptions: { ...optionsBase.baseOptions, delegate: "GPU" }
+                });
+            } catch {
+                handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                    ...optionsBase,
+                    baseOptions: { ...optionsBase.baseOptions, delegate: "CPU" }
+                });
             }
+
+            async function startCamera(facingMode) {
+                if (!navigator.mediaDevices?.getUserMedia) return;
+                if (webcamStream) webcamStream.getTracks().forEach(t => t.stop());
+                webcamStream = await navigator.mediaDevices.getUserMedia({
+                    audio: false,
+                    video: {
+                        facingMode: { ideal: facingMode },
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    }
+                });
+                video.srcObject = webcamStream;
+                await video.play().catch(() => { });
+            }
+
+            await startCamera(webcamFacingMode);
+            video.addEventListener("loadeddata", predictWebcam, { once: true });
         }
 
         let lastVideoTime = -1;
@@ -828,6 +876,26 @@
             });
 
             setupMusicPlayer();
+
+            const switchBtn = document.getElementById('switch-camera-btn');
+            if (switchBtn) {
+                switchBtn.addEventListener('click', async () => {
+                    webcamFacingMode = (webcamFacingMode === 'user') ? 'environment' : 'user';
+                    if (navigator.mediaDevices?.getUserMedia && video) {
+                        if (webcamStream) webcamStream.getTracks().forEach(t => t.stop());
+                        webcamStream = await navigator.mediaDevices.getUserMedia({
+                            audio: false,
+                            video: {
+                                facingMode: { ideal: webcamFacingMode },
+                                width: { ideal: 640 },
+                                height: { ideal: 480 }
+                            }
+                        });
+                        video.srcObject = webcamStream;
+                        await video.play().catch(() => { });
+                    }
+                });
+            }
         }
 
         function setupMusicPlayer() {
