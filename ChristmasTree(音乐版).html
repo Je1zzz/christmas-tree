@@ -187,6 +187,60 @@
             transform: scale(1.05);
         }
 
+        /* 顶部摄像头按钮位置 */
+        #toggle-webcam-btn {
+            right: 30px;
+        }
+
+        #switch-camera-btn {
+            right: 78px;
+        }
+
+        /* 右侧动作面板 */
+        .action-panel {
+            position: fixed;
+            top: 50%;
+            right: 18px;
+            transform: translateY(-50%);
+            z-index: 30;
+            width: 160px;
+            padding: 12px;
+            border-radius: 14px;
+            background: rgba(0, 0, 0, 0.45);
+            border: 1px solid rgba(212, 175, 55, 0.35);
+            backdrop-filter: blur(8px);
+            pointer-events: auto;
+        }
+
+        .action-title {
+            color: rgba(252, 238, 167, 0.95);
+            font-size: 12px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .action-btn {
+            width: 100%;
+            display: block;
+            padding: 10px 10px;
+            margin: 8px 0;
+            border-radius: 12px;
+            background: rgba(20, 20, 20, 0.6);
+            border: 1px solid rgba(212, 175, 55, 0.35);
+            color: rgba(252, 238, 167, 0.95);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Cinzel', 'Times New Roman', serif;
+        }
+
+        .action-btn:hover {
+            background: rgba(212, 175, 55, 0.18);
+            border-color: rgba(212, 175, 55, 0.55);
+            transform: translateY(-1px);
+        }
+
         /* Music Player Styles */
         .music-player {
             position: absolute;
@@ -317,7 +371,7 @@
         <div class="upload-wrapper">
             <label class="upload-btn">
                 🎄 💗 留 下 回 忆 💗 🎄
-                <input type="file" id="file-input" multiple accept="image/*">
+                <input type="file" id="file-input" multiple accept="image/png,image/jpeg,image/jpg">
             </label>
             <div class="hint-text">按 下 H 隐 藏</div>
         </div>
@@ -336,7 +390,18 @@
             <button class="music-toggle-mini" id="hide-music-btn" title="隐藏播放器">×</button>
         </div>
         <button id="show-music-btn" class="music-btn" title="显示播放器">🎵</button>
-        <button id="switch-camera-btn" class="cam-btn" title="切换前/后摄像头">📷</button>
+        <!-- 摄像头开关：默认关闭（不弹权限） -->
+        <button id="toggle-webcam-btn" class="cam-btn" title="摄像头开关（开启后恢复手势控制）">🎥</button>
+        <!-- 切换前/后摄像头：仅在摄像头开启时可用 -->
+        <button id="switch-camera-btn" class="cam-btn" title="切换前/后摄像头" style="display:none;">🔄</button>
+    </div>
+
+    <!-- 右侧动作面板：无摄像头也可操作 -->
+    <div id="action-panel" class="action-panel">
+        <div class="action-title">动作</div>
+        <button id="btn-collapse" class="action-btn">收回圣诞树</button>
+        <button id="btn-explode" class="action-btn">爆开圣诞树</button>
+        <button id="btn-autorotate" class="action-btn">自动旋转：开</button>
     </div>
 
     <!-- Webcam hidden structure -->
@@ -378,27 +443,13 @@
             focusIndex: -1,
             focusTarget: null,
             hand: { detected: false, x: 0, y: 0 },
-            rotation: { x: 0, y: 0 }
+            rotation: { x: 0, y: 0 },
+            webcamEnabled: false,
+            autoRotate: true
         };
 
-        // 预置图片列表（根据实际路径替换）
-        const PRESET_IMAGES = [
-            'assets/1.png',
-            'assets/2.png',
-            'assets/3.png',
-            'assets/4.png',
-            'assets/5.png',
-            'assets/6.png',
-            'assets/7.png',
-            'assets/8.png',
-            'assets/9.png',
-            'assets/10.png',
-            'assets/11.png',
-            'assets/12.png',
-
-        ];
-
-        function loadTextureFromURL(url, onLoad) {
+        // 自动扫描并加载 assets 文件夹中的图片
+        function loadTextureFromURL(url, onLoad, onError) {
             new THREE.TextureLoader().load(
                 url,
                 (t) => {
@@ -406,8 +457,53 @@
                     onLoad(t);
                 },
                 undefined,
-                (err) => console.warn('预置图片加载失败', url, err)
+                (err) => {
+                    if (onError) onError(err);
+                }
             );
+        }
+
+        // 自动尝试加载 assets 文件夹中的 PNG 和 JPG 图片
+        async function autoLoadAssetsImages() {
+            const maxAttempts = 100; // 尝试加载编号 1-100 的图片
+            const basePath = 'assets/';
+            
+            // 按优先级尝试的扩展名列表（先尝试 jpg，再尝试 png）
+            const extensions = ['jpg', 'jpeg', 'png'];
+            
+            // 尝试加载单个编号的图片，按扩展名优先级顺序
+            async function tryLoadImage(index) {
+                for (const ext of extensions) {
+                    const url = `${basePath}${index}.${ext}`;
+                    try {
+                        await new Promise((resolve, reject) => {
+                            loadTextureFromURL(
+                                url,
+                                (texture) => {
+                                    addPhotoToScene(texture);
+                                    resolve(true);
+                                },
+                                () => reject(false) // 文件不存在时尝试下一个扩展名
+                            );
+                        });
+                        return true; // 成功加载，不再尝试其他格式
+                    } catch {
+                        // 继续尝试下一个扩展名
+                        continue;
+                    }
+                }
+                return false; // 所有格式都失败
+            }
+            
+            // 并发加载多个图片（限制并发数以提高性能）
+            const concurrency = 10; // 同时最多加载 10 个图片
+            for (let i = 1; i <= maxAttempts; i += concurrency) {
+                const batch = [];
+                for (let j = 0; j < concurrency && (i + j) <= maxAttempts; j++) {
+                    batch.push(tryLoadImage(i + j));
+                }
+                await Promise.all(batch);
+            }
         }
 
         let scene, camera, renderer, composer;
@@ -419,6 +515,9 @@
         let webcamStream = null;
         let webcamFacingMode = 'user';
         let caneTexture;
+        let predictRafId = null;
+        const raycaster = new THREE.Raycaster();
+        const pointerNdc = new THREE.Vector2();
 
         async function init() {
             initThree();
@@ -428,7 +527,7 @@
             createParticles();
             createDust();
             createDefaultPhotos();
-            loadPresetPhotos();   // 预先加载图片
+            autoLoadAssetsImages();   // 自动加载 assets 文件夹中的图片
             setupPostProcessing();
             setupEvents();
             await initMediaPipe();
@@ -739,9 +838,6 @@
             particleSystem.push(new Particle(group, 'PHOTO', false));
         }
 
-        function loadPresetPhotos() {
-            PRESET_IMAGES.forEach(url => loadTextureFromURL(url, addPhotoToScene));
-        }
 
         function handleImageUpload(e) {
             const files = e.target.files;
@@ -786,49 +882,11 @@
                     baseOptions: { ...optionsBase.baseOptions, delegate: "CPU" }
                 });
             }
-
-            async function startCamera(facingMode) {
-                if (!navigator.mediaDevices?.getUserMedia) return;
-                if (webcamStream) webcamStream.getTracks().forEach(t => t.stop());
-                webcamStream = await navigator.mediaDevices.getUserMedia({
-                    audio: false,
-                    video: {
-                        facingMode: { ideal: facingMode },
-                        width: { ideal: 640 },
-                        height: { ideal: 480 }
-                    }
-                });
-                video.srcObject = webcamStream;
-                video.muted = true;
-                video.playsInline = true;
-                
-                return new Promise((resolve) => {
-                    const tryPlay = async () => {
-                        try {
-                            await video.play();
-                            const checkReady = () => {
-                                if (video.readyState >= 2) {
-                                    resolve();
-                                } else {
-                                    setTimeout(checkReady, 50);
-                                }
-                            };
-                            checkReady();
-                        } catch (e) {
-                            setTimeout(tryPlay, 100);
-                        }
-                    };
-                    video.addEventListener('playing', () => resolve(), { once: true });
-                    tryPlay();
-                });
-            }
-
-            await startCamera(webcamFacingMode);
-            predictWebcam();
         }
 
         let lastVideoTime = -1;
         async function predictWebcam() {
+            if (!STATE.webcamEnabled) return;
             if (video.currentTime !== lastVideoTime) {
                 lastVideoTime = video.currentTime;
                 if (handLandmarker) {
@@ -839,7 +897,132 @@
                     webcamCtx.drawImage(video, 0, 0, webcamCanvas.width, webcamCanvas.height);
                 }
             }
-            requestAnimationFrame(predictWebcam);
+            predictRafId = requestAnimationFrame(predictWebcam);
+        }
+
+        async function startCamera(facingMode) {
+            if (!navigator.mediaDevices?.getUserMedia) throw new Error('浏览器不支持 getUserMedia');
+            if (webcamStream) webcamStream.getTracks().forEach(t => t.stop());
+            webcamStream = await navigator.mediaDevices.getUserMedia({
+                audio: false,
+                video: {
+                    facingMode: { ideal: facingMode },
+                    width: { ideal: 640 },
+                    height: { ideal: 480 }
+                }
+            });
+            video.srcObject = webcamStream;
+            video.muted = true;
+            video.playsInline = true;
+
+            return new Promise((resolve) => {
+                const tryPlay = async () => {
+                    try {
+                        await video.play();
+                        const checkReady = () => {
+                            if (video.readyState >= 2) resolve();
+                            else setTimeout(checkReady, 50);
+                        };
+                        checkReady();
+                    } catch {
+                        setTimeout(tryPlay, 100);
+                    }
+                };
+                video.addEventListener('playing', () => resolve(), { once: true });
+                tryPlay();
+            });
+        }
+
+        function stopCamera() {
+            if (predictRafId) {
+                cancelAnimationFrame(predictRafId);
+                predictRafId = null;
+            }
+            if (webcamStream) {
+                webcamStream.getTracks().forEach(t => t.stop());
+                webcamStream = null;
+            }
+            if (video) {
+                video.pause?.();
+                video.srcObject = null;
+            }
+            STATE.hand.detected = false;
+            GESTURE.last = 'NONE';
+            GESTURE.stable = 'NONE';
+            GESTURE.sameCount = 0;
+        }
+
+        async function setWebcamEnabled(enabled) {
+            STATE.webcamEnabled = enabled;
+            const toggleBtn = document.getElementById('toggle-webcam-btn');
+            const switchBtn = document.getElementById('switch-camera-btn');
+
+            if (enabled) {
+                try {
+                    await startCamera(webcamFacingMode);
+                    lastVideoTime = -1;
+                    if (switchBtn) switchBtn.style.display = 'inline-flex';
+                    if (toggleBtn) toggleBtn.textContent = '🎥';
+                    predictWebcam();
+                } catch {
+                    STATE.webcamEnabled = false;
+                    if (switchBtn) switchBtn.style.display = 'none';
+                    if (toggleBtn) toggleBtn.textContent = '🚫';
+                    stopCamera();
+                }
+            } else {
+                if (switchBtn) switchBtn.style.display = 'none';
+                if (toggleBtn) toggleBtn.textContent = '🎥';
+                stopCamera();
+            }
+        }
+
+        function setMode(nextMode) {
+            STATE.mode = nextMode;
+            if (nextMode !== 'FOCUS') STATE.focusTarget = null;
+        }
+
+        function toggleAutoRotate() {
+            STATE.autoRotate = !STATE.autoRotate;
+            const btn = document.getElementById('btn-autorotate');
+            if (btn) btn.textContent = `自动旋转：${STATE.autoRotate ? '开' : '关'}`;
+        }
+
+        function getPointerNdcFromEvent(ev) {
+            const x = (ev.clientX / window.innerWidth) * 2 - 1;
+            const y = -(ev.clientY / window.innerHeight) * 2 + 1;
+            pointerNdc.set(x, y);
+        }
+
+        function tryPickPhoto(ev) {
+            if (STATE.mode !== 'SCATTER' && STATE.mode !== 'FOCUS') return;
+            getPointerNdcFromEvent(ev);
+            raycaster.setFromCamera(pointerNdc, camera);
+
+            const photoParticles = particleSystem.filter(p => p.type === 'PHOTO').map(p => p.mesh);
+            if (!photoParticles.length) return;
+
+            const hits = raycaster.intersectObjects(photoParticles, true);
+            if (!hits.length) return;
+
+            let obj = hits[0].object;
+            while (obj && obj.parent && !photoParticles.includes(obj)) obj = obj.parent;
+            const pickedGroup = photoParticles.includes(obj) ? obj : null;
+            if (!pickedGroup) return;
+
+            if (STATE.mode === 'SCATTER') {
+                STATE.focusTarget = pickedGroup;
+                STATE.mode = 'FOCUS';
+                return;
+            }
+            if (STATE.mode === 'FOCUS') {
+                if (STATE.focusTarget === pickedGroup) {
+                    STATE.mode = 'SCATTER';
+                    STATE.focusTarget = null;
+                } else {
+                    STATE.focusTarget = pickedGroup;
+                }
+            }
         }
 
         function d3(a, b) {
@@ -909,6 +1092,14 @@
             });
             document.getElementById('file-input').addEventListener('change', handleImageUpload);
 
+            // 右侧动作按钮
+            const btnCollapse = document.getElementById('btn-collapse');
+            const btnExplode = document.getElementById('btn-explode');
+            const btnAuto = document.getElementById('btn-autorotate');
+            btnCollapse?.addEventListener('click', () => setMode('TREE'));
+            btnExplode?.addEventListener('click', () => setMode('SCATTER'));
+            btnAuto?.addEventListener('click', toggleAutoRotate);
+
             // Toggle UI logic - ONLY hide controls, keep title
             window.addEventListener('keydown', (e) => {
                 if (e.key.toLowerCase() === 'h') {
@@ -929,25 +1120,29 @@
 
             setupMusicPlayer();
 
+            // 摄像头开关
+            const toggleWebcamBtn = document.getElementById('toggle-webcam-btn');
+            toggleWebcamBtn?.addEventListener('click', async () => {
+                await setWebcamEnabled(!STATE.webcamEnabled);
+            });
+
+            // 切换前/后摄像头（仅在开启时有效）
             const switchBtn = document.getElementById('switch-camera-btn');
-            if (switchBtn) {
-                switchBtn.addEventListener('click', async () => {
-                    webcamFacingMode = (webcamFacingMode === 'user') ? 'environment' : 'user';
-                    if (navigator.mediaDevices?.getUserMedia && video) {
-                        if (webcamStream) webcamStream.getTracks().forEach(t => t.stop());
-                        webcamStream = await navigator.mediaDevices.getUserMedia({
-                            audio: false,
-                            video: {
-                                facingMode: { ideal: webcamFacingMode },
-                                width: { ideal: 640 },
-                                height: { ideal: 480 }
-                            }
-                        });
-                        video.srcObject = webcamStream;
-                        await video.play().catch(() => { });
-                    }
-                });
-            }
+            switchBtn?.addEventListener('click', async () => {
+                webcamFacingMode = (webcamFacingMode === 'user') ? 'environment' : 'user';
+                if (!STATE.webcamEnabled) return;
+                await setWebcamEnabled(false);
+                await setWebcamEnabled(true);
+            });
+
+            // 爆开态点击照片放大/还原
+            window.addEventListener('pointerdown', (ev) => {
+                const panel = document.getElementById('action-panel');
+                const uiLayer = document.getElementById('ui-layer');
+                if (panel && panel.contains(ev.target)) return;
+                if (uiLayer && uiLayer.contains(ev.target)) return;
+                tryPickPhoto(ev);
+            });
         }
 
         function setupMusicPlayer() {
@@ -1041,17 +1236,21 @@
             const dt = clock.getDelta();
 
             // Rotation Logic（仅在 ROTATE 手势下旋转，避免误触）
-            if (STATE.mode === 'SCATTER' && STATE.hand.detected && GESTURE.stable === 'ROTATE') {
+            if (STATE.webcamEnabled && STATE.mode === 'SCATTER' && STATE.hand.detected && GESTURE.stable === 'ROTATE') {
                 const targetRotY = -STATE.hand.x * Math.PI * 0.9;
                 const targetRotX = STATE.hand.y * Math.PI * 0.25;
                 STATE.rotation.y += (targetRotY - STATE.rotation.y) * 3.0 * dt;
                 STATE.rotation.x += (targetRotX - STATE.rotation.x) * 3.0 * dt;
             } else {
-                if (STATE.mode === 'TREE') {
-                    STATE.rotation.y += 0.3 * dt;
-                    STATE.rotation.x += (0 - STATE.rotation.x) * 2.0 * dt;
+                if (STATE.autoRotate) {
+                    if (STATE.mode === 'TREE') {
+                        STATE.rotation.y += 0.3 * dt;
+                        STATE.rotation.x += (0 - STATE.rotation.x) * 2.0 * dt;
+                    } else {
+                        STATE.rotation.y += 0.1 * dt;
+                    }
                 } else {
-                    STATE.rotation.y += 0.1 * dt;
+                    STATE.rotation.x += (0 - STATE.rotation.x) * 2.0 * dt;
                 }
             }
 
