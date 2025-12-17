@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ChristmasTree 启动页</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #0b0b0f;
+      color: #fff;
+    }
+
+    .wrap {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 28px 18px 40px;
+      box-sizing: border-box;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-weight: 650;
+      letter-spacing: .5px;
+      font-size: 20px;
+    }
+
+    .tip {
+      margin: 0 0 18px;
+      color: rgba(255, 255, 255, .72);
+      line-height: 1.55;
+      font-size: 13px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    a.card {
+      display: block;
+      text-decoration: none;
+      color: inherit;
+      border: 1px solid rgba(255, 255, 255, .12);
+      background: rgba(255, 255, 255, .04);
+      border-radius: 12px;
+      padding: 14px;
+      transition: transform .12s ease, border-color .12s ease, background .12s ease;
+    }
+
+    a.card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(255, 255, 255, .25);
+      background: rgba(255, 255, 255, .06);
+    }
+
+    .name {
+      font-weight: 700;
+      font-size: 14px;
+      margin: 0 0 6px;
+    }
+
+    .desc {
+      margin: 0;
+      font-size: 12px;
+      color: rgba(255, 255, 255, .70);
+      line-height: 1.55;
+    }
+
+    .note {
+      margin-top: 18px;
+      font-size: 12px;
+      color: rgba(255, 255, 255, .62);
+      line-height: 1.7;
+      border-top: 1px dashed rgba(255, 255, 255, .14);
+      padding-top: 14px;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      background: rgba(255, 255, 255, .08);
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <h1>ChristmasTree 启动页</h1>
+    <p class="tip">
+      这个项目使用 <code>type="module"</code>（ESM 模块），不能直接双击 <code>.html</code> 用 <code>file://</code> 打开。
+      请先启动一个本地 Web 服务（推荐双击 <code>start.bat</code>）。
+    </p>
+
+    <div class="grid">
+      <a class="card" href="ChristmasTree(粉色主题).html">
+        <div class="name">ChristmasTree（粉色主题）</div>
+        <p class="desc">照片墙 + 手势交互 + 音乐播放器</p>
+      </a>
+      <a class="card" href="ChristmasTree(尼克狐尼克) copy.html">
+        <div class="name">ChristmasTree（尼克狐尼克）</div>
+        <p class="desc">另一套主题/布局版本</p>
+      </a>
+      <a class="card" href="ChristmasTree(音乐版).html">
+        <div class="name">ChristmasTree（音乐版）</div>
+        <p class="desc">含背景音乐控制</p>
+      </a>
+      <a class="card" href="圣诞树.html">
+        <div class="name">圣诞树</div>
+        <p class="desc">经典版本</p>
+      </a>
+      <a class="card" href="生日蛋糕版本.html">
+        <div class="name">生日蛋糕版本</div>
+        <p class="desc">生日蛋糕主题</p>
+      </a>
+    </div>
+
+    <div class="note">
+      - 手机访问：推荐部署到支持 HTTPS 的静态托管（如 GitHub Pages / Netlify / Vercel），手机浏览器才会允许摄像头权限。<br />
+      - 局域网访问：电脑开服务后，手机连同一 Wi-Fi，用 <code>http://电脑IP:端口/</code> 可访问，但多数手机浏览器在 HTTP 下不允许摄像头。<br />
+      - 完全离线（无网络）需要把 three/mediapipe 等依赖改为本地资源并同源提供；需要的话我也可以继续帮你做。
+    </div>
+  </div>
+</body>
+
+</html>
+
+
