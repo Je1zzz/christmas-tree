@@ -202,12 +202,26 @@
         backdrop-filter: blur(6px);
       }
 
+      /* 竖屏：预览更适配手机（不挤扁） */
+      @media (orientation: portrait) {
+        #webcam-wrapper {
+          width: 120px;
+          height: 160px;
+        }
+      }
+
+      #webcam-preview {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
       /* Action panel */
       .action-panel {
         position: fixed;
         top: 50%;
         right: 18px;
-        transform: translateY(-50%);
+        transform: translate3d(0, -50%, 0);
         z-index: 30;
         width: 168px;
         padding: 12px;
@@ -216,6 +230,36 @@
         border: 1px solid rgba(255, 210, 122, 0.28);
         backdrop-filter: blur(10px);
         pointer-events: auto;
+      }
+
+      /* 右侧按钮组隐藏态（保留右上角开关按钮可点） */
+      .action-panel.panel-hidden {
+        transform: translate3d(240px, -50%, 0);
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      /* 面板开关按钮（右上角） */
+      .panel-toggle-btn {
+        position: fixed;
+        top: 18px;
+        right: 18px;
+        z-index: 31;
+        width: 40px;
+        height: 40px;
+        border-radius: 999px;
+        background: rgba(20, 20, 20, 0.55);
+        border: 1px solid rgba(255, 210, 122, 0.35);
+        color: rgba(255, 230, 241, 0.92);
+        backdrop-filter: blur(6px);
+        cursor: pointer;
+        pointer-events: auto;
+        transition: all 0.25s ease;
+      }
+
+      .panel-toggle-btn:hover {
+        background: rgba(255, 210, 122, 0.14);
+        transform: scale(1.05);
       }
 
       .action-title {
@@ -343,12 +387,17 @@
       </div>
     </div>
 
+    <!-- 右侧按钮组开关（始终可点） -->
+    <button id="panel-toggle-btn" class="panel-toggle-btn" title="显示/隐藏按钮组">☰</button>
+
     <!-- 右侧动作面板：无摄像头也可操作（对齐 圣诞树.html） -->
     <div id="action-panel" class="action-panel">
       <div class="action-title">动作</div>
       <button id="btn-collapse" class="action-btn">收回圣诞树</button>
       <button id="btn-explode" class="action-btn">爆开圣诞树</button>
       <button id="btn-autorotate" class="action-btn">自动旋转：开</button>
+      <button id="btn-reset-view" class="action-btn">恢复视角</button>
+      <button id="btn-bgm" class="action-btn">音乐：开</button>
       <div class="slider-container">
         <div class="slider-label">旋转速度</div>
         <input type="range" min="0" max="100" value="35" class="slider" id="rotation-speed-slider">
@@ -921,6 +970,7 @@
       const bgmList = [];
       let currentBgmIndex = 0;
       let bgmEnabled = true;
+      let bgmUnlocked = false;
 
       // 自动加载assets文件夹中的mp3文件（1..100）
       async function loadBgmFiles() {
@@ -1005,6 +1055,8 @@
           });
           current.audio.volume = 0.65;
           await current.audio.play();
+          bgmUnlocked = true;
+          updateBgmButton();
         } catch {
           // 忽略：需要用户手势，后续交互会再次触发
         }
@@ -1018,8 +1070,23 @@
       // 初始化加载BGM文件
       loadBgmFiles();
 
-      window.addEventListener("pointerdown", tryStartBgm, { once: true });
-      window.addEventListener("keydown", tryStartBgm, { once: true });
+      // iOS Safari（尤其 iPhone）常见：必须 touchstart/click 才能解锁音频播放
+      function installBgmUnlockHandlers() {
+        const handler = async () => {
+          await tryStartBgm();
+          if (bgmUnlocked) {
+            window.removeEventListener("pointerdown", handler, true);
+            window.removeEventListener("touchstart", handler, true);
+            window.removeEventListener("click", handler, true);
+          }
+        };
+        // 用捕获阶段，尽量早拿到用户手势；且不使用 once（避免第一次音频未加载完就错过）
+        window.addEventListener("pointerdown", handler, true);
+        window.addEventListener("touchstart", handler, true);
+        window.addEventListener("click", handler, true);
+        window.addEventListener("keydown", handler, true);
+      }
+      installBgmUnlockHandlers();
 
       /** @param {number} dt */
       function updateSnow(dt) {
@@ -1134,6 +1201,22 @@
       document.getElementById("btn-collapse")?.addEventListener("click", () => setMode("TREE"));
       document.getElementById("btn-explode")?.addEventListener("click", () => setMode("SCATTER"));
       document.getElementById("btn-autorotate")?.addEventListener("click", () => setAutoRotate(!STATE.autoRotate));
+      document.getElementById("btn-reset-view")?.addEventListener("click", () => resetView());
+      document.getElementById("btn-bgm")?.addEventListener("click", () => toggleBgm());
+
+      // 右侧按钮组显示/隐藏（右上角按钮）
+      const panelToggleBtn = document.getElementById("panel-toggle-btn");
+      const actionPanel = document.getElementById("action-panel");
+      function setPanelVisible(visible) {
+        if (!actionPanel) return;
+        actionPanel.classList.toggle("panel-hidden", !visible);
+        if (panelToggleBtn) panelToggleBtn.textContent = visible ? "☰" : "⟩";
+      }
+      panelToggleBtn?.addEventListener("click", () => {
+        if (!actionPanel) return;
+        const hidden = actionPanel.classList.contains("panel-hidden");
+        setPanelVisible(hidden);
+      });
 
       // 旋转速度滑动条
       document.getElementById("rotation-speed-slider")?.addEventListener("input", (e) => {
@@ -1150,9 +1233,17 @@
           bgmList.forEach((item) => {
             item.audio.pause();
           });
+          updateBgmButton();
         } else {
           tryStartBgm();
+          updateBgmButton();
         }
+      }
+
+      function updateBgmButton() {
+        const btn = document.getElementById("btn-bgm");
+        if (!btn) return;
+        btn.textContent = `音乐：${bgmEnabled ? "开" : "关"}`;
       }
 
       // 照片：保持原始比例/原色（不打光）
@@ -1398,13 +1489,25 @@
       }
 
       async function initMediaPipe() {
+        const webcamWrapper = /** @type {HTMLElement | null} */ (document.getElementById("webcam-wrapper"));
         video = /** @type {HTMLVideoElement} */ (document.getElementById("webcam"));
         webcamCanvas = /** @type {HTMLCanvasElement} */ (document.getElementById("webcam-preview"));
         webcamCtx = webcamCanvas?.getContext("2d") ?? null;
-        if (webcamCanvas) {
-          webcamCanvas.width = 160;
-          webcamCanvas.height = 120;
+        function resizeWebcamPreview() {
+          if (!webcamWrapper || !webcamCanvas || !webcamCtx) return;
+          const w = Math.max(1, webcamWrapper.clientWidth);
+          const h = Math.max(1, webcamWrapper.clientHeight);
+          const dpr = Math.min(window.devicePixelRatio || 1, 2);
+          webcamCanvas.width = Math.floor(w * dpr);
+          webcamCanvas.height = Math.floor(h * dpr);
+          webcamCanvas.style.width = `${w}px`;
+          webcamCanvas.style.height = `${h}px`;
+          // 之后用“CSS像素”坐标绘制（canvas 内部已按 dpr 放大）
+          webcamCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         }
+        resizeWebcamPreview();
+        window.addEventListener("resize", resizeWebcamPreview);
+        video?.addEventListener("loadedmetadata", resizeWebcamPreview);
 
         const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
         const optionsBase = {
@@ -1421,6 +1524,22 @@
       }
 
       let lastVideoTime = -1;
+      function drawVideoContain() {
+        const webcamWrapper = /** @type {HTMLElement | null} */ (document.getElementById("webcam-wrapper"));
+        if (!video || !webcamCtx || !webcamCanvas || !webcamWrapper) return;
+        const vw = video.videoWidth || 0;
+        const vh = video.videoHeight || 0;
+        if (!vw || !vh) return;
+        const cw = Math.max(1, webcamWrapper.clientWidth);
+        const ch = Math.max(1, webcamWrapper.clientHeight);
+        const scale = Math.min(cw / vw, ch / vh);
+        const dw = vw * scale;
+        const dh = vh * scale;
+        const dx = (cw - dw) / 2;
+        const dy = (ch - dh) / 2;
+        webcamCtx.clearRect(0, 0, cw, ch);
+        webcamCtx.drawImage(video, 0, 0, vw, vh, dx, dy, dw, dh);
+      }
       function predictWebcam() {
         if (!STATE.webcamEnabled) return;
         if (!video || !handLandmarker) return;
@@ -1428,7 +1547,7 @@
           lastVideoTime = video.currentTime;
           const result = handLandmarker.detectForVideo(video, performance.now());
           processGestures(result);
-          if (webcamCtx && webcamCanvas) webcamCtx.drawImage(video, 0, 0, webcamCanvas.width, webcamCanvas.height);
+          drawVideoContain();
         }
         predictRafId = requestAnimationFrame(predictWebcam);
       }
@@ -1477,6 +1596,18 @@
             lastVideoTime = -1;
             if (switchBtn) switchBtn.style.display = "inline-flex";
             if (toggleBtn) toggleBtn.textContent = "🎥";
+            // 竖屏下确保画布按容器尺寸初始化，避免拉伸
+            const webcamWrapper = /** @type {HTMLElement | null} */ (document.getElementById("webcam-wrapper"));
+            if (webcamWrapper && webcamCanvas && webcamCtx) {
+              const w = Math.max(1, webcamWrapper.clientWidth);
+              const h = Math.max(1, webcamWrapper.clientHeight);
+              const dpr = Math.min(window.devicePixelRatio || 1, 2);
+              webcamCanvas.width = Math.floor(w * dpr);
+              webcamCanvas.height = Math.floor(h * dpr);
+              webcamCanvas.style.width = `${w}px`;
+              webcamCanvas.style.height = `${h}px`;
+              webcamCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            }
             predictWebcam();
           } catch {
             STATE.webcamEnabled = false;
